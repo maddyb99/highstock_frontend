@@ -1,8 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { Search, Package, FileText, DollarSign, AlertCircle, CheckCircle, Loader2, Zap, Tag } from 'lucide-react';
+import { Search, Package, FileText, DollarSign, AlertCircle, AlertTriangle, CheckCircle, Loader2, Zap, Tag } from 'lucide-react';
 
 // --- CUSTOM COMPONENT WRAPPERS (Replaced external imports) ---
-const Alert = ({ children, variant, className }) => <div className={`p-4 rounded-lg flex items-start space-x-3 ${variant === 'destructive' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'} ${className}`}>{children}</div>;
+const Alert = ({ children, variant, className }) => (
+  <div className={`p-4 rounded-lg flex items-start space-x-3 ${variant === 'destructive' ? 'bg-red-100 text-red-800' : variant === 'warning' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'} ${className}`}>
+    {children}
+  </div>
+);
 const AlertDescription = ({ children }) => <p className="text-sm">{children}</p>;
 const Card = ({ children, className }) => <div className={`bg-white rounded-xl shadow-2xl ${className}`}>{children}</div>;
 const CardHeader = ({ children, className }) => <div className={`p-6 border-b border-gray-100 ${className}`}>{children}</div>;
@@ -50,6 +54,7 @@ export default function ProductLookupTool() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [partialWarning, setPartialWarning] = useState(null);
 
   // Determine if essential fields are filled
   const isFormValid = formData.productName.trim() && formData.brandName.trim() && formData.upc.trim();
@@ -86,21 +91,27 @@ export default function ProductLookupTool() {
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle specific 404/400 errors from the backend
         const errorMessage = data.error || 'Failed to retrieve product data.';
-        const partial = data.partial_result ? JSON.stringify(data.partial_result, null, 2) : null;
+        const partial = data.partial_result || null;
 
-        if (response.status === 404 && partial) {
-            setError(`${errorMessage}\n\nPartial AI Result Found:\n${partial}`);
+        if (partial) {
+          // Show the partial result as a normal result, but display a warning card
+          setResult(partial);
+          setPartialWarning(errorMessage || 'Partial AI result returned — verify details.');
+          setError(null);
         } else {
-            setError(errorMessage);
+          setError(errorMessage);
+          setResult(null);
+          setPartialWarning(null);
         }
-        
-        // Throw an error to stop execution and ensure 'finally' runs
-        throw new Error(errorMessage); 
+
+        // return early since this was an error response
+        return;
       }
 
       setResult(data);
+      setPartialWarning(null);
+      setError(null);
     } catch (err) {
       // The error is already set above, so only log here if it was a network/parsing error
       if (!error) { 
@@ -116,6 +127,7 @@ export default function ProductLookupTool() {
     setFormData({ productName: '', brandName: '', upc: '', size: '', color: '' });
     setResult(null);
     setError(null);
+    setPartialWarning(null);
   };
 
   const renderResultDetail = (Icon, label, value, colorClass) => (
@@ -127,6 +139,13 @@ export default function ProductLookupTool() {
       </div>
     </div>
   );
+
+  // Determine whether the currently-displayed result is a partial result
+  const isPartial = Boolean(partialWarning);
+  const resultHeaderBg = isPartial ? 'bg-orange-600' : 'bg-green-600';
+  const resultCardBorder = isPartial ? 'border border-orange-200' : '';
+  const ResultIcon = isPartial ? AlertTriangle : CheckCircle;
+  const resultTitle = isPartial ? 'Partial Result — Verify' : 'Product Successfully Found';
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans">
@@ -260,11 +279,11 @@ export default function ProductLookupTool() {
 
             {/* Found Result */}
             {result && (
-              <Card className="shadow-2xl">
-                <CardHeader className="bg-green-600 rounded-t-xl border-none">
+              <Card className={`shadow-2xl ${resultCardBorder}`}>
+                <CardHeader className={`${resultHeaderBg} rounded-t-xl border-none`}>
                   <CardTitle className="flex items-center gap-2 text-white">
-                    <CheckCircle className="w-5 h-5" />
-                    Product Successfully Found
+                    <ResultIcon className="w-5 h-5" />
+                    {resultTitle}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
